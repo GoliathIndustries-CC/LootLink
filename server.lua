@@ -2,6 +2,10 @@ local cryptoNet = require("lib.cryptoNet")
 local Storage = require("storage")
 local completion = require("cc.completion")
 
+local function log(message)
+    print("[LootLink] "..message)
+end
+
 local function readFile(fileName)
     local path = fs.combine(shell.dir(), fileName)
     if fs.exists(path) then
@@ -100,6 +104,17 @@ local storage = Storage.new()
 local HOSTNAME = "LootLink"
 local function onStart()
     cryptoNet.host(HOSTNAME, false, false, modemSide)
+    os.startThread(function()
+        local timer = 0
+        while true do
+            if timer == 0 then
+                storage:serializeList("cachedStorage.tbl")
+                log("Updated storage cache.")
+                timer = 60
+            else timer = timer - 1 end
+            os.sleep(1)
+        end
+    end)
 end
 
 local function getPlayerInventory()
@@ -112,9 +127,11 @@ local function getPlayerInventory()
 end
 
 local function parseMessage(message, socket)
+    if socket.username == nil then return end
     if message.context == "queryStorage" then
-        local itemList = storage:search(message.data)
-        cryptoNet.send(socket, {context = message.context, data = itemList})
+        local list = storage:deserializeList("cachedStorage.tbl") or storage:list()
+        cryptoNet.send(socket, {context = "queryStorage", data = list})
+        log("Served queryStorage to "..socket.username)
     end
 end
 

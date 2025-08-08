@@ -18,66 +18,57 @@ function Storage:updateInventories()
     self.inventories = { peripheral.find("inventory", findFilter) }
 end
 
+function Storage:serializeList(fileName)
+    local path = fs.combine(shell.dir(), fileName)
+    local file = assert(fs.open(path, "w+"), "Encountered a problem writing to the file: "..path)
+    file.write(textutils.serialise(self:list()))
+    file.close()
+end
+
+function Storage:deserializeList(fileName)
+    local path = fs.combine(shell.dir(), fileName)
+    if fs.exists(path) then
+        local file = assert(fs.open(path, "r"), "Encountered a problem opening the file: "..path)
+        local result = file.readAll()
+        file.close()
+        return result and textutils.unserialise(result) or nil
+    end
+    return nil
+end
+
 -- Create sort functions
 
-function Storage:search(query)
-    local function aggregate(results)
-        local aggregated = {}
-        for _, entry in ipairs(results) do
-            local itemName = entry.item.name
+function Storage:list()
+    local aggregated = {}
+    for index, inventory in ipairs(self.inventories) do
+        for slot, item in pairs(inventory.list()) do
+            local itemName = item.name
             if aggregated[itemName] ~= nil then
                 local reference = {
-                    count = entry.item.count,
-                    inventoryIndex = entry.inventoryIndex,
-                    slot = entry.slot,
-                    nbt = entry.item.nbt
+                    count = item.count,
+                    inventoryIndex = index,
+                    slot = slot,
+                    nbt = item.nbt
                 }
                 aggregated[itemName].total = aggregated[itemName].total + reference.count
                 table.insert(aggregated[itemName].references, reference)
             else
                 aggregated[itemName] = {
-                    displayName = self.inventories[entry.inventoryIndex].getItemDetail(entry.slot).displayName,
-                    total = entry.item.count,
+                    displayName = self.inventories[index].getItemDetail(slot).displayName,
+                    total = item.count,
                     references = {
                         {
-                            count = entry.item.count,
-                            inventoryIndex = entry.inventoryIndex,
-                            slot = entry.slot,
-                            nbt = entry.item.nbt
+                            count = item.count,
+                            inventoryIndex = index,
+                            slot = slot,
+                            nbt = item.nbt
                         }
                     }
                 }
             end
         end
-        return aggregated
     end
-
-    local function modSearch(modQuery)
-        local results = {}
-        for index, inventory in ipairs(self.inventories) do
-            for slot, item in pairs(inventory.list()) do
-                local namespace = string.match(item.name, "^(.-):") or ""
-                if string.find(namespace, modQuery) then
-                    table.insert(results, {item = item, slot = slot, inventoryIndex = index})
-                end
-            end
-        end
-        return results
-    end
-
-    local function nameSearch(nameQuery)
-        local results = {}
-        for index, inventory in ipairs(self.inventories) do
-            for slot, item in pairs(inventory.list()) do
-                local itemDisplayName = inventory.getItemDetail(slot).displayName
-                if string.find(itemDisplayName, nameQuery) then
-                    table.insert(results, {item = item, slot = slot, inventoryIndex = index})
-                end
-            end
-        end
-        return results
-    end
-    if string.sub(query, 1, 2) == "@" then return aggregate(modSearch(string.sub(query, 2))) else return aggregate(nameSearch(query)) end
+    return aggregated
 end
 
 function Storage:push(wrappedPeripheral, inventoryIndex, slot, count)
